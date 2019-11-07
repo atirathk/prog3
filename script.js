@@ -49,9 +49,11 @@ var VSHADER_SOURCE =
 	'	 		 vec4 vertPos4 = u_ModelView * (vec4(a_Position, 1.0) + u_Translation);\n' +
   '	 		 v_VertPos = vec3(vertPos4) / vertPos4.w;\n' +
   '	 		 v_NormalInterp = vec3(u_NormalMat * vec4(a_Normal, 0.0));\n' +
-  '	 		 gl_Position = u_Projection * vertPos4;\n' +	'  	} else {\n' +
+  '	 		 gl_Position = u_Projection * vertPos4;\n' +
+  '  	 }\n' +
+  '		 else {\n' +
 	'    	 v_Color = vec4(diffuse, u_Color.a);\n' +
-	'  	}}\n' +
+	'    }}\n' +
 	// Wireframe color
 	'  else\n' +
 	'      v_Color = vec4(1.0, 0.0, 1.0, 1.0);\n' +
@@ -67,8 +69,9 @@ var FSHADER_SOURCE =
   'void main() {\n' +
   '  gl_FragColor = v_Color;\n' +
   '}\n';
-
+var r_id;
 var g_points = [];  // The array for the position of a mouse press
+var mouseVec;
 var lastLeftUp = new Float32Array(0, 0, 0);
 var mode = 0;
 var view = 1;
@@ -241,8 +244,8 @@ function main() {
 	// Pass the transformation matrix for normal to u_NormalMatrix
 	gl.uniformMatrix4fv(u_NormalMat, false, normalMat.elements);
 
-	canvas.onmousedown = function(ev){ lastClick = leftDown(ev, gl, canvas, u_ModelView, u_Projection); };
-	canvas.onmouseup = function(ev){ leftUp(ev, gl, canvas, u_ModelView, u_Projection); };
+	canvas.onmousedown = function(ev){ lastClick = mouseDown(ev, gl, canvas, u_ModelView, u_Projection); };
+	canvas.onmouseup = function(ev){ mouseUp(ev, gl, canvas, u_ModelView, u_Projection); };
 
 	draw(gl, u_ModelView, u_Projection);
 }
@@ -302,7 +305,7 @@ function load() {
 	console.log("g_points: ", g_points);
 }
 
-function leftDown(ev, gl, canvas, u_ModelView, u_Projection) {	
+function mouseDown(ev, gl, canvas, u_ModelView, u_Projection) {	
   // Write the positions of vertices to a vertex shader
 	var x = ev.clientX; // x coordinate of a mouse pointer
 	var y = ev.clientY; // y coordinate of a mouse pointer
@@ -465,14 +468,12 @@ function drawCylinder(gl, u_ModelView, u_Projection, x1, y1, z1, x2, y2, z2, d, 
 		console.log('Failed to get the storage location of u_Translation');
 		return;
 	}
-
-	if (u_PickedTree) {
-		gl.uniform4f(u_Translation, SpanX*lastLeftUp[0], SpanY*lastLeftUp[1], 0, 0);  
-		gl.uniform1i(u_PickedTree, 0); // Pass false to u_Clicked
-	}
-	else {
-		gl.uniform4f(u_Translation, SpanX*xy[0], SpanY*xy[1], 0, 0);  
-	}
+	if (xy[3] == selected) {
+		xy[0] += mouseVec[0];
+		xy[1] += mouseVec[1];
+	//	gl.uniform4f(u_Translation, SpanX*mouseVec[0] + xy[0], SpanY*(mouseVec[1] + xy[1]), 0, 0);  
+	}	
+	gl.uniform4f(u_Translation, SpanX*xy[0], SpanY*xy[1], 0, 0);  
 	
   var u_Color = gl.getUniformLocation(gl.program, 'u_Color');
   if (!u_Color) {
@@ -486,12 +487,11 @@ function drawCylinder(gl, u_ModelView, u_Projection, x1, y1, z1, x2, y2, z2, d, 
     return;
   }
   
-  var r_id = xy[3]/51; //Encoding tree id as color value (max 50 trees)
+  r_id = xy[3]/51; //Encoding tree id as color value (max 50 trees)
   
   gl.uniform4f(u_idColor, r_id, 1.0, 0.0, 1.0);
 
   // Clear <canvas>
-  // gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); 
   // Draw
   if (mode == 0) {
 		if(xy[2] == 0) {
@@ -502,24 +502,26 @@ function drawCylinder(gl, u_ModelView, u_Projection, x1, y1, z1, x2, y2, z2, d, 
 		}
 		else if (xy[2] == 1 || xy[2] == 3) {
 			gl.uniform4f(u_Color, 0.0, 1.0, 0.0, 1.0);
-		}	
+		}
 		gl.drawArrays(gl.TRIANGLE_STRIP, 0, n);
   }
   else if (mode == 1) {
-		gl.uniform4f(u_Color, 1.0, 0.0, 1.0, 0);
+		gl.uniform4f(u_Color, 1.0, 1.0, 1.0, 0);
 		gl.drawArrays(gl.LINES, 0, n);
   }
 }
 
-function leftUp(ev, gl, canvas, u_ModelView, u_Projection) {
+function mouseUp(ev, gl, canvas, u_ModelView, u_Projection) {
   // Write the positions of vertices to a vertex shader
   var x = ev.clientX; // x coordinate of a mouse pointer
   var y = ev.clientY; // y coordinate of a mouse pointer
   var rect = ev.target.getBoundingClientRect();
   var x_in_canvas = ev.clientX - rect.left, y_in_canvas = rect.bottom - ev.clientY;
   var btn = ev.button;
+  var gLastIndex = g_points.length - 1;
   x = ((x - rect.left) - canvas.width/2)/(canvas.width/2);
   y = (canvas.height/2 - (y - rect.top))/(canvas.height/2);
+  mouseVec = [x - g_points[gLastIndex][0], y - g_points[gLastIndex][1], 0];
+ //	console.log('mouseVec:', mouseVec);
   draw(gl, u_ModelView, u_Projection);
-  lastLeftUp = [x, y, 0];
 }
