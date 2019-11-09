@@ -12,13 +12,16 @@ var VSHADER_SOURCE =
 	'attribute vec3 a_Normal;\n' +
 	'attribute vec4 a_Color;\n' +
 	'uniform mat4 u_NormalMat, u_Projection, u_ModelView;\n' +
+	'uniform vec3 u_MouseVec;\n' +
 	'uniform vec4 u_Translation;\n' +
-	'uniform vec4 u_idColor;\n' +  
+	'uniform mat4 u_Scale;\n' +
+	'uniform vec4 u_idColor;\n' +
+	'varying mat4 v_RotationX, v_RotationZ;\n' +  
 	'varying vec3 v_NormalInterp;\n' +
 	'varying vec3 v_VertPos;\n' +
+	'varying float v_Cos0, v_Sin0;\n' +
 	'uniform int u_Mode;   // Rendering mode\n' +
 	'uniform bool u_PickedTree;\n' +
-	'uniform bool u_Phong;\n' +
 	'uniform float u_Id;\n' +
 	'uniform vec4 u_Kd;   // Diffuse reflection coefficient\n' +
 	'varying float v_Id;		// ID for the tree\n' +
@@ -29,7 +32,22 @@ var VSHADER_SOURCE =
 	'varying vec4 v_Color; //color\n' +
 	'\n' +
 	'void main()	{\n' +
-	'	 vec4 vertPos4 = u_ModelView * (vec4(a_Position, 1.0) + u_Translation);\n' +
+	'  vec3 M = normalize(u_MouseVec);\n' +
+	'	 v_Cos0 = max(dot(M, vec3(0, 0, 1)), 0.0);\n' +
+	'	 v_Sin0 = pow(1.0 - pow(v_Cos0, 2.0), 0.5);\n' +
+	'	 v_RotationX = mat4(\n' +
+	'		 1, 0, 			0, 			 0,\n' +
+	'		 0, v_Cos0, v_Sin0,  0,\n' +
+	'		 0,-v_Sin0, v_Cos0,  0,\n' +
+	'		 0, 0, 			0, 			 1 \n' +
+	'	 );\n' +
+	'	 v_RotationZ = mat4(\n' +
+	'		 v_Cos0, v_Sin0, 0, 0,\n' +
+	'		-v_Sin0, v_Cos0, 0, 0,\n' +
+	'		 0, 		 0, 		 1, 0,\n' +
+	'		 0, 		 0, 		 0, 1 \n' +
+	'	 );\n' +
+	'	 vec4 vertPos4 = u_ModelView * u_Translation + (v_RotationX * v_RotationZ * u_Scale * vec4(a_Position, 1.0));\n' +
   '	 v_VertPos = vec3(vertPos4) / vertPos4.w;\n' +
   '	 v_NormalInterp = vec3(u_NormalMat * vec4(a_Normal, 0.0));\n' +
   '	 gl_Position = u_Projection * vertPos4;\n' +
@@ -67,9 +85,8 @@ var FSHADER_SOURCE =
   '}\n';
 var r_id;
 var g_points = [];  // The array for the position of a mouse press
-var mouseVec = [0, 0, 0];
-var lastLeftUp = [0, 0, 0];
-var lastLeftDown = [0, 0, 0];
+var mouseVec = new Float32Array([0, 0, 0]);
+var lastMouseDown = [0, 0, 0, 0];
 var mode = 0;
 var view = 1;
 var proj = 0;
@@ -217,6 +234,23 @@ function main() {
 	 	console.log('Failed to get u_ModelView storage location');
   	return;
 	}
+	
+	var u_Scale = gl.getUniformLocation(gl.program, 'u_Scale');
+	if (!u_Scale) { 
+	  console.log('Failed to get uniform variable(s) storage location');
+	  return;
+	}
+	var scale = new Matrix4();
+	scale.setScale(1, 1, 1);
+	gl.uniformMatrix4fv(u_Scale, false, scale.elements);
+
+	var u_MouseVec = gl.getUniformLocation(gl.program, 'u_MouseVec');
+	if (!u_MouseVec) { 
+	  console.log('Failed to get uniform variable(s) storage location');
+	  return;
+	}
+	gl.uniform3f(u_MouseVec, mouseVec[0], mouseVec[1], 400);
+//	var temp = gl.getUniform(gl.program, u_MouseVec);
 	// Register function (event handler) to be called on a mouse press
   u_NormalMat = gl.getUniformLocation(gl.program, 'u_NormalMat');
 	if (!u_NormalMat) { 
@@ -241,7 +275,7 @@ function main() {
 	// Pass the transformation matrix for normal to u_NormalMatrix
 	gl.uniformMatrix4fv(u_NormalMat, false, normalMat.elements);
 
-	canvas.onmousedown = function(ev){ lastClick = mouseDown(ev, gl, canvas, u_ModelView, u_Projection); };
+	canvas.onmousedown = function(ev){ mouseDown(ev, gl, canvas, u_ModelView, u_Projection); };
 	canvas.onmouseup = function(ev){ mouseUp(ev, gl, canvas, u_ModelView, u_Projection); };
 
 	draw(gl, u_ModelView, u_Projection);
@@ -313,36 +347,9 @@ function mouseDown(ev, gl, canvas, u_ModelView, u_Projection) {
 	y = (canvas.height/2 - (y - rect.top))/(canvas.height/2);
 	var x_in_canvas = ev.clientX - rect.left, y_in_canvas = rect.bottom - ev.clientY;
 	gl.uniform1i(u_PickedTree, 1); // Pass false to u_Clicked
-  lastLeftDown[0] = x;
-  lastLeftDown[1] = y;
-  /*
-	var pixels = new Uint8Array(4); // Array for storing the pixel value
-	gl.readPixels(x_in_canvas, y_in_canvas, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
-	console.log("pixel color value = " + pixels);
-	idx = Math.round(pixels[0]/5);
-
-	console.log("id value = " + idx);
-	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); 
-	gl.uniform1i(u_PickedTree, 0); // Pass false to u_Clicked(rewrite the cube)	
-
-	if (mode == 0  && mouseVec[0] == 0 && mouseVec[1] == 0 && mouseVec[2] == 0){
-		if (selected == 0) {
-			if (pixels[0] == 0) {
-				g_points.push([x, y, btn, ++id]); //format: [mouse x location, mouse y location, mouse button/tree type, tree id]
-			}
-			else {
-				g_points[(idx-1)][2]++;
-				selected = idx;
-			}
-		}
-		else if (selected > 0){
-			if (pixels[0] == 0){
-				g_points[(selected-1)][2]--;
-				selected = 0;
-			}
-		}
-	}
-	draw(gl, u_ModelView, u_Projection);*/
+  lastMouseDown[0] = x;
+  lastMouseDown[1] = y;
+  lastMouseDown[2] = btn;
 }
 
 function draw(gl, u_ModelView, u_Projection) {
@@ -364,9 +371,13 @@ function drawTree(gl, u_ModelView, u_Projection, xy) {
 	var r1 = 0;
 	var r2 = 0;
 	if (xy[3] == selected) {
-		g_points[xy[3]-1][0] = mouseVec[0] + xy[0];
-		g_points[xy[3]-1][1] = mouseVec[1] + xy[1];
-		console.log(g_points[xy[3]-1]); 
+		if (lastMouseDown[2] == 0) {
+			g_points[xy[3]-1][0] = mouseVec[0] + xy[0];
+			g_points[xy[3]-1][1] = mouseVec[1] + xy[1];
+		}
+		else {
+
+		}
 	}
 	for(var i = 0; i < n; i=i+6) {
 		var d = Math.sqrt((v[i]-v[i+3])*(v[i]-v[i+3])+(v[i+1]-v[i+4])*(v[i+1]-v[i+4])+(v[i+2]-v[i+5])*(v[i+2]-v[i+5]));
@@ -473,9 +484,6 @@ function drawCylinder(gl, u_ModelView, u_Projection, x1, y1, z1, x2, y2, z2, d, 
 		return;
 	}
 	if (xy[3] == selected) {
-	//	g_points[xy[3]-1][0] = mouseVec[0] + xy[0];
-	//	g_points[xy[3]-1][1] = mouseVec[1] + xy[1];
-	//	console.log(g_points[xy[3]-1]);
 		gl.uniform4f(u_Translation, SpanX*g_points[xy[3]-1][0], SpanY*g_points[xy[3]-1][1], 0, 0);  
 	}
 	else {
@@ -528,7 +536,7 @@ function mouseUp(ev, gl, canvas, u_ModelView, u_Projection) {
   var gLastIndex = g_points.length - 1;
   x = ((x - rect.left) - canvas.width/2)/(canvas.width/2);
   y = (canvas.height/2 - (y - rect.top))/(canvas.height/2);
-  mouseVec = [x - lastLeftDown[0], y - lastLeftDown[1], 0];
+  mouseVec = [x - lastMouseDown[0], y - lastMouseDown[1], 0];
   draw(gl, u_ModelView, u_Projection);
   var pixels = new Uint8Array(4); // Array for storing the pixel value
 	gl.readPixels(x_in_canvas, y_in_canvas, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
@@ -539,7 +547,7 @@ function mouseUp(ev, gl, canvas, u_ModelView, u_Projection) {
 	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); 
 	gl.uniform1i(u_PickedTree, 0); // Pass false to u_Clicked(rewrite the cube)	
 
-	if (mode == 0  && mouseVec[0] == 0 && mouseVec[1] == 0){
+	if (mode == 0  && mouseVec[0] == 0 && mouseVec[1] == 0) {
 		if (selected == 0) {
 			if (pixels[0] == 0) {
 				g_points.push([x, y, btn, ++id]); //format: [mouse x location, mouse y location, mouse button/tree type, tree id]
@@ -549,16 +557,14 @@ function mouseUp(ev, gl, canvas, u_ModelView, u_Projection) {
 				selected = idx;
 			}
 		}
-		else if (selected > 0){
-			if (pixels[0] == 0){
+		else if (selected > 0) {
+			if (pixels[0] == 0) {
 				g_points[(selected-1)][2]--;
 				selected = 0;
 			}
 		}
 	}
 	draw(gl, u_ModelView, u_Projection);
-
  	console.log('mouseVec:', mouseVec);
  	mouseVec = [0, 0, 0];
-//  draw(gl, u_ModelView, u_Projection);
 }
