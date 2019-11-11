@@ -34,29 +34,11 @@ var VSHADER_SOURCE =
 	'const float PI = 3.1415926535897932384626433832795;\n' +
 	'\n' +
 	'void main()	{\n' +
-//	'	 v_Cosa = cos(u_MouseVec.y);\n' +
-//	'	 v_Sina = pow(1.0 - pow(v_Cosa, 2.0), 0.5);\n' +
-//	'	 u_RotationX = mat4(\n' +
-//	'		 1, 0, 			0, 			 0,\n' +
-//	'		 0, v_Cosa,-v_Sina,  0,\n' +
-//	'		 0, v_Sina, v_Cosa,  0,\n' +
-//	'		 0, 0, 			0, 			 1 \n' +
-//	'	 );\n' +
-//	'  vec3 M2 = normalize(u_MouseVec);\n' +
-//	'	 v_Cosr = dot(M2, vec3(0, 0, 1));\n' +
-//	'	 v_Sinr = pow(1.0 - pow(v_Cosr, 2.0), 0.5);\n' +
-//	'	 u_RotationZ = mat4(\n' +
-//	'		 v_Cosr,-v_Sinr, 0, 0,\n' +
-//	'		 v_Sinr, v_Cosr, 0, 0,\n' +
-//	'		 0, 		 0, 		 1, 0,\n' +
-//	'		 0, 		 0, 		 0, 1 \n' +
-//	'	 );\n' +
 	'	 vec4 vertPos4 = u_Scale * vec4(a_Position, 1);\n' +
 	'	 vertPos4 = u_RotationX * vertPos4;\n' +
 	'	 vertPos4 = u_RotationZ * vertPos4;\n' +
 	'	 vertPos4 = u_Translation + vertPos4;\n' +
 	'	 vertPos4 = u_ModelView * vertPos4;\n' +
-	//'	 vertPos4 = (vec4(a_Position, 1.0) * u_RotationX * u_Scale) + u_ModelView * u_Translation;\n' +
   '	 v_VertPos = vec3(vertPos4) / vertPos4.w;\n' +
   '	 v_NormalInterp = vec3(u_NormalMat * vec4(a_Normal, 0.0));\n' +
   '	 gl_Position = u_Projection * vertPos4;\n' +
@@ -296,7 +278,9 @@ function main() {
 
 	draw(gl, u_ModelView, u_Projection);
 }
-
+/*
+Handles the different viewing, like orthographic, perspective, top, and side
+*/
 function setViewMatrix(gl, u_ModelView, u_Projection){
 	var projection = new Matrix4();
 	var modelView = new Matrix4();
@@ -326,7 +310,9 @@ function setViewMatrix(gl, u_ModelView, u_Projection){
 	gl.uniformMatrix4fv(u_Projection, false, projection.elements);
 	gl.uniformMatrix4fv(u_ModelView, false, modelView.elements);
 }
-
+/*
+Saves scenes. Unmodified from Fahim's example.
+*/
 function save(filename) {
 	var savedata = document.createElement('a');
 	savedata.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(g_points));
@@ -336,7 +322,9 @@ function save(filename) {
 	savedata.click();
 	document.body.removeChild(savedata);
 }
-
+/*
+Loads scenes. Unmodified from Fahim's example.
+*/
 function load() {
   var Loadfile = document.getElementById("loadscene").files[0];
   var reader = new FileReader();
@@ -351,7 +339,9 @@ function load() {
   };	
 	console.log("g_points: ", g_points);
 }
-
+/*
+Executed when the middle, right, or left mouse buttons are pressed.
+*/
 function mouseDown(ev, gl, canvas, u_ModelView, u_Projection) {	
   // Write the positions of vertices to a vertex shader
 	var x = ev.clientX; // x coordinate of a mouse pointer
@@ -366,9 +356,10 @@ function mouseDown(ev, gl, canvas, u_ModelView, u_Projection) {
   lastMouseDown[0] = x;
   lastMouseDown[1] = y;
   lastMouseDown[2] = btn;
-
 }
-
+/*
+Executed when the middle, right, or left mouse buttons are released.
+*/
 function mouseUp(ev, gl, canvas, u_ModelView, u_Projection) {
   // Write the positions of vertices to a vertex shader
   var x = ev.clientX; // x coordinate of a mouse pointer
@@ -379,6 +370,7 @@ function mouseUp(ev, gl, canvas, u_ModelView, u_Projection) {
   var gLastIndex = g_points.length - 1;
   x = ((x - rect.left) - canvas.width/2)/(canvas.width/2);
   y = (canvas.height/2 - (y - rect.top))/(canvas.height/2);
+  var z = 0;
   mouseVec = [x - lastMouseDown[0], y - lastMouseDown[1], 0];
   draw(gl, u_ModelView, u_Projection);
   var pixels = new Uint8Array(4); // Array for storing the pixel value
@@ -390,14 +382,14 @@ function mouseUp(ev, gl, canvas, u_ModelView, u_Projection) {
 	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); 
 	gl.uniform1i(u_PickedTree, 0); // Pass false to u_Clicked(rewrite the cube)	
 
-	if (mode == 0  && mouseVec[0] == 0 && mouseVec[1] == 0) {
+	if (mode == 0  && mouseVec[0] == 0 && mouseVec[1] == 0 && btn != 1) {
 		if (selected == 0) {
 			if (pixels[0] == 0) {
 				var translate = new Vector4();
 				var rotationX = new Matrix4();
 				var rotationZ = new Matrix4();
 				var scale = new Matrix4();
-				g_points.push([x, y, btn, ++id, translate, rotationX, rotationZ, scale]); //format: [mouse x location, mouse y location, mouse button/tree type, tree id]
+				g_points.push([x, y, btn, ++id, translate, rotationX, rotationZ, scale, z]); //format: [mouse x location, mouse y location, mouse button/tree type, tree id]
 			}
 			else {
 				g_points[(idx-1)][2]++;
@@ -415,29 +407,41 @@ function mouseUp(ev, gl, canvas, u_ModelView, u_Projection) {
  	console.log('mouseVec:', mouseVec);
  	mouseVec = [0, 0, 0];
 }
-
+/*
+Handles mouse scrolling. Adjusts the scale matrixf.
+*/
 function wheel(ev, gl, canvas, u_ModelView, u_Projection) {
   draw(gl, u_ModelView, u_Projection);
 	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); 
 	if (selected > 0) {
+		ev.preventDefault();
 		var u_Scale = gl.getUniformLocation(gl.program, 'u_Scale');
 		if (!u_Scale) { 
 		  console.log('Failed to get uniform variable(s) storage location');
 		  return;
 		}
-		var s = ev.deltaY/100;
+		var s;
+		var currentScale = gl.getUniform(gl.program, u_Scale);
+		if (ev.deltaY > 0) {
+			s = currentScale[0] * 0.5;
+		}
+		else {
+			s = currentScale[0] * 2.0;
+		}
 		g_points[idx-1][7].scale(s, s, s);
 		gl.uniformMatrix4fv(u_Scale, false, g_points[idx-1][7].elements);
 	}
 	draw(gl, u_ModelView, u_Projection);
- 	console.log('deltaY:', ev.deltaY);
 }
-
+/*
+Draws the entire scene.
+*/
 function draw(gl, u_ModelView, u_Projection) {
 	setViewMatrix(gl, u_ModelView, u_Projection);
 	var len = g_points.length;
 	var u_RotationX = gl.getUniformLocation(gl.program, 'u_RotationX');
 	var u_RotationZ = gl.getUniformLocation(gl.program, 'u_RotationZ');
+	var u_Scale = gl.getUniformLocation(gl.program, 'u_Scale');
 	if (!u_RotationX || !u_RotationZ) { 
 	  console.log('Failed to get uniform variable(s) storage location');
 	  return;
@@ -446,10 +450,13 @@ function draw(gl, u_ModelView, u_Projection) {
 		var xy = g_points[i];
 		gl.uniformMatrix4fv(u_RotationX, false, g_points[xy[3]-1][5].elements);
 		gl.uniformMatrix4fv(u_RotationZ, false, g_points[xy[3]-1][6].elements);
+		gl.uniformMatrix4fv(u_Scale, false, g_points[xy[3]-1][7].elements);
 		drawTree(gl, u_ModelView, u_Projection, xy);
 	}
 }
-
+/*
+Draws one tree.
+*/
 function drawTree(gl, u_ModelView, u_Projection, xy) {
 	if(xy[2] == 0)
 	var v = new Float32Array(treeR3);
@@ -468,10 +475,8 @@ function drawTree(gl, u_ModelView, u_Projection, xy) {
 			g_points[xy[3]-1][4].elements[1] += mouseVec[1] * SpanY;
 			g_points[xy[3]-1][4].elements[2] = mouseVec[2];
 			g_points[xy[3]-1][4].elements[3] = 1;
-			var u_Translation = gl.getUniformLocation(gl.program, 'u_Translation');
-			gl.uniform4fv(u_Translation, g_points[xy[3]-1][4].elements);
 		}
-		else {
+		else if (lastMouseDown[2] == 2) {
 			var u_RotationX = gl.getUniformLocation(gl.program, 'u_RotationX');
 			var u_RotationZ = gl.getUniformLocation(gl.program, 'u_RotationZ');
 			if (!u_RotationX || !u_RotationZ) { 
@@ -483,13 +488,18 @@ function drawTree(gl, u_ModelView, u_Projection, xy) {
 			g_points[xy[3]-1][6].rotate(-mouseVec[0] * 50, 0, 0, 1);
 			gl.uniformMatrix4fv(u_RotationZ, false, g_points[xy[3]-1][6].elements);
 		}
+		else {
+			g_points[xy[3]-1][8] += mouseVec[1];
+		}
 	}
 	for(var i = 0; i < n; i=i+6) {
 		var d = Math.sqrt((v[i]-v[i+3])*(v[i]-v[i+3])+(v[i+1]-v[i+4])*(v[i+1]-v[i+4])+(v[i+2]-v[i+5])*(v[i+2]-v[i+5]));
 		drawCylinder(gl, u_ModelView, u_Projection, v[i],v[i+1],v[i+2], v[i+3],v[i+4],v[i+5], d, xy);
 	}
 }
-
+/*
+Draws one cylinder.
+*/
 function drawCylinder(gl, u_ModelView, u_Projection, x1, y1, z1, x2, y2, z2, d, xy) {
 	r1 = d/10;
 	r2 = d/20;
@@ -589,10 +599,10 @@ function drawCylinder(gl, u_ModelView, u_Projection, x1, y1, z1, x2, y2, z2, d, 
 		return;
 	}
 	if (xy[3] == selected) {
-		gl.uniform4f(u_Translation, SpanX*g_points[xy[3]-1][0], SpanY*g_points[xy[3]-1][1], 0, 0);  
+		gl.uniform4f(u_Translation, SpanX*g_points[xy[3]-1][0], SpanY*g_points[xy[3]-1][1], SpanY*g_points[xy[3]-1][8]/4, 0);  
 	}
 	else {
-		gl.uniform4f(u_Translation, SpanX*xy[0], SpanY*xy[1], 0, 0);
+		gl.uniform4f(u_Translation, SpanX*xy[0], SpanY*xy[1], SpanY*xy[8]/4, 0);
 	}
 	
   var u_Color = gl.getUniformLocation(gl.program, 'u_Color');
@@ -610,9 +620,6 @@ function drawCylinder(gl, u_ModelView, u_Projection, x1, y1, z1, x2, y2, z2, d, 
   r_id = xy[3]/51; //Encoding tree id as color value (max 50 trees)
   
   gl.uniform4f(u_idColor, r_id, 1.0, 0.0, 1.0);
-
-  // Clear <canvas>
-  // Draw
   if (mode == 0) {
 		if(xy[2] == 0) {
 			gl.uniform4f(u_Color, 1.0, 0.0, 0.0, 1.0);
